@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page.title }}</title>
+    <meta name="description" content="{{ page.excerpt | strip_html | truncate: 160 }}">
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: auto; padding: 20px; line-height: 1.6; }
+        h1 { color: #4e2e1a; }
+        a { color: #8b4513; }
+    </style>
+</head>
+<body>
+    <article>
+        <h1>{{ page.title }}</h1>
+        <p><em>{{ page.date | date: "%d.%m.%Y" }}</em></p>
+        {{ content }}
+    </article>
+</body>
+</html>
