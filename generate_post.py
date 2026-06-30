@@ -1,30 +1,28 @@
 import os
 import requests
-import google.generativeai as genai
+from groq import Groq
 from github import Github
 from datetime import datetime
 import json
 import re
 
 # --- Конфигурация (из Secrets) ---
-GEMINI_KEY = os.environ['GEMINI_API_KEY']
+GROQ_KEY = os.environ['GROQ_API_KEY']
 GH_TOKEN = os.environ['GH_TOKEN']
-REPO_NAME = "AleksBA009.github.io"   # ваш репозиторий
+REPO_NAME = "AleksBA009.github.io"
 SITE_URL = "https://aleksba009.github.io"
-PINTEREST_TOKEN = os.environ.get('PINTEREST_TOKEN', None)  # опционально
+PINTEREST_TOKEN = os.environ.get('PINTEREST_TOKEN', None)
 
-# Настройка Gemini
-genai.configure(api_key=GEMINI_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+# Настройка Groq
+client = Groq(api_key=GROQ_KEY)
 
-# Партнёрские ссылки (замените на свои после регистрации)
+# Партнёрские ссылки (замените на свои)
 AFFILIATE_LINKS = {
     "курс бариста онлайн": "https://digistore24.com/example-barista-course",
     "лучшая бюджетная кофемашина": "https://admitad.com/example-coffeemachine",
     "свежие кофейные зерна": "https://travelpayouts.com/example-coffee-beans"
 }
 
-# --- Функции ---
 def get_next_topic():
     with open("topics.txt", "r", encoding="utf-8") as f:
         lines = f.readlines()
@@ -38,7 +36,6 @@ def get_next_topic():
     raise Exception("Все темы использованы. Добавьте новые в topics.txt.")
 
 def generate_article(topic):
-    # Выбираем релевантную партнёрскую ссылку
     if "кофемашин" in topic or "бюджет" in topic:
         aff_text = "бюджетной кофемашины"
         aff_url = AFFILIATE_LINKS["лучшая бюджетная кофемашина"]
@@ -62,9 +59,13 @@ def generate_article(topic):
 Ответ верни ТОЛЬКО в формате JSON: {{"title": "...", "excerpt": "...", "content_markdown": "...", "tags": "кофе, ..."}}. 
 В "content_markdown" используй Markdown с подзаголовками ##, списками, абзацами. Без дополнительных пояснений."""
     
-    response = model.generate_content(prompt)
-    # Извлекаем JSON из ответа (может быть обёрнут в ```json)
-    raw = response.text
+    response = client.chat.completions.create(
+        model="llama-3.1-70b-versatile",  # или "mixtral-8x7b-32768" для разнообразия
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.7,
+        max_tokens=2048,
+    )
+    raw = response.choices[0].message.content
     json_match = re.search(r'{.*}', raw, re.DOTALL)
     if json_match:
         data = json.loads(json_match.group())
@@ -73,7 +74,6 @@ def generate_article(topic):
     return data
 
 def create_image(topic):
-    # Бесплатный API Pollinations.ai
     prompt = f"Кофе арт, реалистичное фото, {topic}, уютная атмосфера, капли кофе, светлый фон, вертикальная композиция"
     url = f"https://image.pollinations.ai/prompt/{requests.utils.quote(prompt)}?width=1000&height=1500&n=1"
     response = requests.get(url)
@@ -84,7 +84,7 @@ def create_image(topic):
         img_path = os.path.join(img_dir, img_name)
         with open(img_path, "wb") as f:
             f.write(response.content)
-        return f"/{img_path}"  # относительный путь для Jekyll
+        return f"/{img_path}"
     return None
 
 def commit_post(data, img_path):
@@ -92,7 +92,6 @@ def commit_post(data, img_path):
     date_str = datetime.now().strftime("%Y-%m-%d")
     filename = f"_posts/{date_str}-{slug}.md"
     
-    # YAML frontmatter
     frontmatter = f"""---
 layout: post
 title: "{data['title']}"
@@ -106,7 +105,6 @@ tags: {data.get('tags', 'кофе')}
         content += f"\n\n![{data['title']}]({img_path})"
     
     g = Github(GH_TOKEN)
-    # ЗАМЕНА НА ВАШ USERNAME
     repo = g.get_repo(f"AleksBA009/{REPO_NAME}")
     try:
         contents = repo.get_contents(filename)
@@ -123,7 +121,6 @@ def notify_indexing(slug):
 def post_to_pinterest(slug, data, img_path):
     if PINTEREST_TOKEN and img_path:
         board_id = "ваш_board_id"
-        endpoint = "https://api.pinterest.com/v5/pins"
         headers = {"Authorization": f"Bearer {PINTEREST_TOKEN}"}
         pin_data = {
             "board_id": board_id,
@@ -132,18 +129,14 @@ def post_to_pinterest(slug, data, img_path):
             "link": f"{SITE_URL}/{slug}/",
             "media_source": {"source_type": "image_url", "url": f"{SITE_URL}/{img_path}"}
         }
-        print("Пин отправлен (закомментировано до настройки).")
+        print("Пин отправлен (закомментировано).")
 
-# --- Основной рабочий процесс ---
 if __name__ == "__main__":
     topic = get_next_topic()
     print(f"Генерируем тему: {topic}")
-    
     article = generate_article(topic)
     img_path = create_image(topic)
     slug = commit_post(article, img_path)
-    
     notify_indexing(slug)
     post_to_pinterest(slug, article, img_path)
-    
     print("Готово!")
