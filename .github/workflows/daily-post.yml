@@ -33,10 +33,12 @@ jobs:
           PINTEREST_TOKEN: ${{ secrets.PINTEREST_TOKEN }}
         run: python generate_post.py
 
-      - name: Commit any changes
+      - name: Commit and push any local changes (topics.txt, images)
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git remote set-url origin https://x-access-token:${{ secrets.GH_TOKEN }}@github.com/AleksBA009/AleksBA009.github.io.git
+          git pull --rebase origin main
           git add .
           git commit -m "Авто-обновление" || echo "No changes to commit"
-          git push https://x-access-token:${{ secrets.GH_TOKEN }}@github.com/AleksBA009/AleksBA009.github.io.git
+          git push origin main
