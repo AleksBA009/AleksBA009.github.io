@@ -16,9 +16,9 @@ PINTEREST_TOKEN = os.environ.get('PINTEREST_TOKEN', None)
 client = Groq(api_key=GROQ_KEY)
 
 AFFILIATE_LINKS = {
-    "курс бариста онлайн": "https://digistore24.com/example-barista-course",
-    "лучшая бюджетная кофемашина": "https://admitad.com/example-coffeemachine",
-    "свежие кофейные зерна": "https://travelpayouts.com/example-coffee-beans"
+    "курс бариста онлайн": "https://getsale.ru/ваша_ссылка",
+    "лучшая бюджетная кофемашина": "https://ad.admitad.com/g/ваша_ссылка",
+    "свежие кофейные зерна": "https://ad.admitad.com/g/ваша_ссылка"
 }
 
 def get_next_topic():
@@ -44,55 +44,59 @@ def generate_article(topic):
         aff_text = "свежих кофейных зерен"
         aff_url = AFFILIATE_LINKS["свежие кофейные зерна"]
 
-    # Улучшенный промпт: требование экранировать спецсимволы в JSON
-    prompt = f"""Ты — эксперт по кофе и SEO-копирайтер. Напиши статью на тему "{topic}" длиной 1000-1500 слов на русском языке.
-Структура: 
-- Привлекающий внимание заголовок (H1).
-- Введение, где ты описываешь проблему или желание читателя.
-- 5-7 подзаголовков H2 с практическими советами, рецептами, сравнениями.
-- Вопросы и ответы (FAQ) по теме.
-- Заключение с рекомендацией.
+    prompt = f"""Ты — профессиональный кофейный эксперт и автор глубоких статей для издания вроде «Вокруг кофе» или «Кофейный журнал». 
+Тема статьи: «{topic}».
 
-В текст естественно вставь 2 раза ссылку: <a href="{aff_url}" target="_blank">{aff_text}</a>. 
-Также добавь одну внутреннюю ссылку на ранее опубликованную статью с сайта {SITE_URL} (придумай правдоподобный URL, например /kak-vybrat-zerna-espresso/).
+Напиши развёрнутую, полезную статью на русском языке длиной не менее 1200 слов. 
+Твой текст должен читаться как материал настоящего знатока, а не поверхностная компиляция из интернета.
 
-Ответ верни ТОЛЬКО в формате JSON. ВАЖНО: внутри JSON экранируй все двойные кавычки как \\\", а все переводы строк внутри текстовых значений как \\n. Сам JSON должен быть валидным.
-Формат JSON:
+Стиль:
+- Умный, но не заумный; доверительный, как разговор с опытным бариста.
+- Избегай общих фраз («кофе — это прекрасный напиток»). Сразу к делу.
+- Используй конкретные цифры, факты, сравнения (например, «давление в 9 бар против 15 бар», «зёрна 100% арабика из Эфиопии Иргачеффе»).
+- Расскажи о типичных ошибках, которые совершают новички, и как их избежать.
+- Включи небольшой исторический или технологический экскурс, если это уместно.
+
+Структура статьи (обязательно используй заголовки H2):
+1. Введение, которое сразу захватывает внимание — начни с проблемы или любопытного факта.
+2. Основная часть из 5-7 подзаголовков, раскрывающих тему с разных сторон.
+3. Блок FAQ: 3-4 вопроса и развёрнутых ответа по теме.
+4. Заключение с главным выводом и рекомендацией.
+
+В тексте дважды естественно вставь партнёрскую ссылку с анкором «{aff_text}»: <a href="{aff_url}" target="_blank">{aff_text}</a>.
+Также добавь одну внутреннюю ссылку на другую статью сайта {SITE_URL} (придумай логичный URL, например /kak-vybrat-zerna-espresso/).
+
+ВАЖНО: ответ пришли ТОЛЬКО в формате JSON, без дополнительного текста.
+JSON-объект должен содержать поля:
 {{"title": "...", "excerpt": "...", "content_markdown": "...", "tags": "кофе, ..."}}
-В "content_markdown" используй Markdown с подзаголовками ##, списками, абзацами. Без дополнительных пояснений."""
+В поле "content_markdown" должен быть полностью Markdown статьи (с подзаголовками ##, списками и т.д.).
+Экранируй все двойные кавычки внутри значений как \\\", а переводы строк как \\n."""
 
     response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model="mixtral-8x7b-32768",   # ← более креативная модель
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.7,
-        max_tokens=2048,
+        temperature=0.85,              # больше вариативности
+        max_tokens=3072,               # даём простор для мысли
     )
     raw = response.choices[0].message.content
 
-    # Попытка 1: ищем JSON в ответе (может быть в ```json ... ```)
     json_match = re.search(r'{.*}', raw, re.DOTALL)
     if json_match:
         raw_json = json_match.group()
     else:
         raw_json = raw
 
-    # Удаляем управляющие символы (кроме разрешённых) и пытаемся парсить
     def clean_json(s):
-        # Удаляем все непечатные управляющие символы, которые не являются \n, \r, \t (хотя \n внутри строк должен быть экранирован)
-        # Оставляем только разрешённые символы
         return re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', s)
 
     try:
         data = json.loads(raw_json)
     except json.JSONDecodeError:
-        # Попытка 2: очистить и повторить
         try:
             cleaned = clean_json(raw_json)
             data = json.loads(cleaned)
         except json.JSONDecodeError as e:
-            # Попытка 3: иногда Groq возвращает не экранированные переводы строк, заменим их на \n
-            # Но это сложно, выведем ошибку с сырым ответом для анализа
-            raise ValueError(f"Не удалось распарсить JSON после очистки. Ошибка: {e}. Сырой ответ:\n{raw[:500]}")
+            raise ValueError(f"Ошибка парсинга JSON: {e}\nСырой ответ:\n{raw[:500]}")
     return data
 
 def commit_post(data, img_path=None):
@@ -126,27 +130,12 @@ def notify_indexing(slug):
     url = f"{SITE_URL}/{slug}/"
     print(f"URL для индексации: {url}")
 
-def post_to_pinterest(slug, data, img_path):
-    if PINTEREST_TOKEN and img_path:
-        board_id = "ваш_board_id"
-        headers = {"Authorization": f"Bearer {PINTEREST_TOKEN}"}
-        pin_data = {
-            "board_id": board_id,
-            "title": data['title'],
-            "description": data['excerpt'],
-            "link": f"{SITE_URL}/{slug}/",
-            "media_source": {"source_type": "image_url", "url": f"{SITE_URL}/{img_path}"}
-        }
-        print("Пин отправлен (закомментировано).")
-
-# --- Основной процесс ---
 if __name__ == "__main__":
     topic = get_next_topic()
     print(f"Генерируем тему: {topic}")
     article = generate_article(topic)
-    # Картинки временно отключены
-    # img_path = create_image(topic)
     slug = commit_post(article, None)
     notify_indexing(slug)
-    post_to_pinterest(slug, article, None)
     print("Готово!")
+    
+        
