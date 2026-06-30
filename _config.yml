@@ -1,0 +1,7 @@
+title: "Кофейный гид Алекса"
+description: "Всё о кофе: рецепты, обзоры, советы"
+baseurl: ""
+url: "https://alex-ba.github.io"
+markdown: kramdown
+highlighter: rouge
+permalink: /:title/
