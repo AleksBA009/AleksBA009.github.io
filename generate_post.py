@@ -35,7 +35,6 @@ def get_next_topic():
     raise Exception("Все темы использованы. Добавьте новые в topics.txt.")
 
 def generate_article(topic):
-    # Выбираем релевантную партнёрскую ссылку
     if "кофемашин" in topic or "бюджет" in topic:
         aff_text = "бюджетной кофемашины"
         aff_url = AFFILIATE_LINKS["лучшая бюджетная кофемашина"]
@@ -68,40 +67,75 @@ def generate_article(topic):
 В тексте дважды естественно вставь партнёрскую ссылку с анкором «{aff_text}»: <a href="{aff_url}" target="_blank">{aff_text}</a>.
 Также добавь одну внутреннюю ссылку на другую статью сайта {SITE_URL} (придумай логичный URL, например /kak-vybrat-zerna-espresso/).
 
-ВАЖНО: ответ пришли ТОЛЬКО в формате JSON, без дополнительного текста.
-JSON-объект должен содержать поля:
-{{"title": "...", "excerpt": "...", "content_markdown": "...", "tags": "кофе, ..."}}
-В поле "content_markdown" должен быть полностью Markdown статьи (с подзаголовками ##, списками и т.д.).
-Экранируй все двойные кавычки внутри значений как \\\", а переводы строк как \\n."""
+Ответ пришли в формате JSON с полями:
+- "title": заголовок статьи,
+- "excerpt": краткое описание (1-2 предложения),
+- "content_markdown": полный текст статьи в Markdown,
+- "tags": строка с тегами через запятую.
+
+Важно: JSON должен быть валидным, без разрывов строк внутри строковых значений. Используй \\n для переносов строк."""
 
     response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",   # ✅ Рабочая модель (не отключена)
+        model="llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.85,
         max_tokens=3072,
     )
     raw = response.choices[0].message.content
+    return parse_article_response(raw)
 
-    # Извлекаем JSON (может быть внутри ```json ... ```)
-    json_match = re.search(r'{.*}', raw, re.DOTALL)
-    if json_match:
-        raw_json = json_match.group()
-    else:
-        raw_json = raw
-
-    # Чистим непечатные управляющие символы, ломающие JSON
-    def clean_json(s):
-        return re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', s)
-
+def parse_article_response(raw):
+    """Извлекает поля статьи из текстового ответа, даже если JSON сломан."""
+    # Попытка 1: парсим как обычный JSON
     try:
-        data = json.loads(raw_json)
-    except json.JSONDecodeError:
+        data = json.loads(raw)
+        if all(k in data for k in ("title", "excerpt", "content_markdown")):
+            return data
+    except:
+        pass
+
+    # Попытка 2: ищем JSON-блок внутри текста (может быть в ```json ... ```)
+    json_match = re.search(r'```json\s*(.*?)\s*```', raw, re.DOTALL)
+    if json_match:
         try:
-            cleaned = clean_json(raw_json)
-            data = json.loads(cleaned)
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Ошибка парсинга JSON: {e}\nСырой ответ:\n{raw[:500]}")
-    return data
+            data = json.loads(json_match.group(1))
+            if all(k in data for k in ("title", "excerpt", "content_markdown")):
+                return data
+        except:
+            pass
+
+    # Попытка 3: извлекаем поля регулярками, даже если есть переносы строк в значениях
+    title = extract_field(raw, "title")
+    excerpt = extract_field(raw, "excerpt")
+    content = extract_field(raw, "content_markdown")
+    tags = extract_field(raw, "tags")
+
+    if title and excerpt and content:
+        return {
+            "title": title,
+            "excerpt": excerpt,
+            "content_markdown": content,
+            "tags": tags or "кофе"
+        }
+    else:
+        raise ValueError(f"Не удалось извлечь статью из ответа:\n{raw[:500]}")
+
+def extract_field(text, field_name):
+    """Ищет значение поля вида "field_name": "значение" с учётом многострочности."""
+    # Сначала ищем "field_name": "..." где значение может содержать экранированные кавычки
+    pattern = rf'"{field_name}"\s*:\s*"(.*?)"\s*[,}}]'
+    match = re.search(pattern, text, re.DOTALL)
+    if match:
+        value = match.group(1)
+        # Убираем экранирование кавычек и переносов строк (если они есть)
+        value = value.replace('\\"', '"').replace('\\n', '\n')
+        return value.strip()
+    # Если не нашли, возможно значение в одинарных кавычках
+    pattern2 = rf'"{field_name}"\s*:\s*'(.*?)'\s*[,}}]'
+    match2 = re.search(pattern2, text, re.DOTALL)
+    if match2:
+        return match2.group(1).strip()
+    return None
 
 def commit_post(data, img_path=None):
     slug = re.sub(r'[^a-zA-Zа-яА-Я0-9]+', '-', data['title'].lower()).strip('-')
@@ -147,16 +181,17 @@ def post_to_pinterest(slug, data, img_path):
         }
         print("Пин отправлен (закомментировано).")
 
-# --- Основной рабочий процесс ---
 if __name__ == "__main__":
     topic = get_next_topic()
     print(f"Генерируем тему: {topic}")
     article = generate_article(topic)
-    # Картинки временно отключены, чтобы не усложнять
-    # img_path = create_image(topic)
     slug = commit_post(article, None)
     notify_indexing(slug)
     post_to_pinterest(slug, article, None)
     print("Готово!")
+
+
+
+
     
         
