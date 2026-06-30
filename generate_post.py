@@ -15,6 +15,7 @@ PINTEREST_TOKEN = os.environ.get('PINTEREST_TOKEN', None)
 
 client = Groq(api_key=GROQ_KEY)
 
+# Партнёрские ссылки (замените на свои)
 AFFILIATE_LINKS = {
     "курс бариста онлайн": "https://getsale.ru/ваша_ссылка",
     "лучшая бюджетная кофемашина": "https://ad.admitad.com/g/ваша_ссылка",
@@ -34,6 +35,7 @@ def get_next_topic():
     raise Exception("Все темы использованы. Добавьте новые в topics.txt.")
 
 def generate_article(topic):
+    # Выбираем релевантную партнёрскую ссылку
     if "кофемашин" in topic or "бюджет" in topic:
         aff_text = "бюджетной кофемашины"
         aff_url = AFFILIATE_LINKS["лучшая бюджетная кофемашина"]
@@ -73,19 +75,21 @@ JSON-объект должен содержать поля:
 Экранируй все двойные кавычки внутри значений как \\\", а переводы строк как \\n."""
 
     response = client.chat.completions.create(
-        model="mixtral-8x7b-32768",   # ← более креативная модель
+        model="llama-3.3-70b-versatile",   # ✅ Рабочая модель (не отключена)
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.85,              # больше вариативности
-        max_tokens=3072,               # даём простор для мысли
+        temperature=0.85,
+        max_tokens=3072,
     )
     raw = response.choices[0].message.content
 
+    # Извлекаем JSON (может быть внутри ```json ... ```)
     json_match = re.search(r'{.*}', raw, re.DOTALL)
     if json_match:
         raw_json = json_match.group()
     else:
         raw_json = raw
 
+    # Чистим непечатные управляющие символы, ломающие JSON
     def clean_json(s):
         return re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', s)
 
@@ -130,12 +134,29 @@ def notify_indexing(slug):
     url = f"{SITE_URL}/{slug}/"
     print(f"URL для индексации: {url}")
 
+def post_to_pinterest(slug, data, img_path):
+    if PINTEREST_TOKEN and img_path:
+        board_id = "ваш_board_id"
+        headers = {"Authorization": f"Bearer {PINTEREST_TOKEN}"}
+        pin_data = {
+            "board_id": board_id,
+            "title": data['title'],
+            "description": data['excerpt'],
+            "link": f"{SITE_URL}/{slug}/",
+            "media_source": {"source_type": "image_url", "url": f"{SITE_URL}/{img_path}"}
+        }
+        print("Пин отправлен (закомментировано).")
+
+# --- Основной рабочий процесс ---
 if __name__ == "__main__":
     topic = get_next_topic()
     print(f"Генерируем тему: {topic}")
     article = generate_article(topic)
+    # Картинки временно отключены, чтобы не усложнять
+    # img_path = create_image(topic)
     slug = commit_post(article, None)
     notify_indexing(slug)
+    post_to_pinterest(slug, article, None)
     print("Готово!")
     
         
