@@ -33,12 +33,19 @@ jobs:
           PINTEREST_TOKEN: ${{ secrets.PINTEREST_TOKEN }}
         run: python generate_post.py
 
-      - name: Commit and push any local changes (topics.txt, images)
+      - name: Commit and push any local changes
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git remote set-url origin https://x-access-token:${{ secrets.GH_TOKEN }}@github.com/AleksBA009/AleksBA009.github.io.git
+          # Сохраняем локальные изменения во временное хранилище
+          git stash
+          # Подтягиваем последнюю версию из удалённого репозитория
           git pull --rebase origin main
+          # Возвращаем наши изменения обратно
+          git stash pop
+          # Добавляем всё (topics.txt, возможно картинки в будущем)
           git add .
-          git commit -m "Авто-обновление" || echo "No changes to commit"
+          # Коммитим (если есть что коммитить)
+          git commit -m "Авто-обновление" || echo "Нет изменений для коммита"
+          # Отправляем на GitHub
           git push origin main
