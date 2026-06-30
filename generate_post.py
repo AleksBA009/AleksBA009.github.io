@@ -85,8 +85,8 @@ def generate_article(topic):
     return parse_article_response(raw)
 
 def parse_article_response(raw):
-    """Извлекает поля статьи из текстового ответа, даже если JSON сломан."""
-    # Попытка 1: парсим как обычный JSON
+    """Извлекает поля статьи из текстового ответа."""
+    # Попытка 1: прямой парсинг JSON
     try:
         data = json.loads(raw)
         if all(k in data for k in ("title", "excerpt", "content_markdown")):
@@ -94,7 +94,7 @@ def parse_article_response(raw):
     except:
         pass
 
-    # Попытка 2: ищем JSON-блок внутри текста (может быть в ```json ... ```)
+    # Попытка 2: ищем JSON внутри markdown-блока
     json_match = re.search(r'```json\s*(.*?)\s*```', raw, re.DOTALL)
     if json_match:
         try:
@@ -104,7 +104,7 @@ def parse_article_response(raw):
         except:
             pass
 
-    # Попытка 3: извлекаем поля регулярками, даже если есть переносы строк в значениях
+    # Попытка 3: извлечение полей регулярками
     title = extract_field(raw, "title")
     excerpt = extract_field(raw, "excerpt")
     content = extract_field(raw, "content_markdown")
@@ -121,20 +121,15 @@ def parse_article_response(raw):
         raise ValueError(f"Не удалось извлечь статью из ответа:\n{raw[:500]}")
 
 def extract_field(text, field_name):
-    """Ищет значение поля вида "field_name": "значение" с учётом многострочности."""
-    # Сначала ищем "field_name": "..." где значение может содержать экранированные кавычки
-    pattern = rf'"{field_name}"\s*:\s*"(.*?)"\s*[,}}]'
+    """Ищет значение поля в JSON-подобной строке, даже если значение содержит неэкранированные переносы строк."""
+    # Ищем "field_name": "..." 
+    pattern = r'"' + re.escape(field_name) + r'"\s*:\s*"(.*?)"\s*[,}]'
     match = re.search(pattern, text, re.DOTALL)
     if match:
         value = match.group(1)
-        # Убираем экранирование кавычек и переносов строк (если они есть)
+        # Заменяем escape-последовательности
         value = value.replace('\\"', '"').replace('\\n', '\n')
         return value.strip()
-    # Если не нашли, возможно значение в одинарных кавычках
-    pattern2 = rf'"{field_name}"\s*:\s*'(.*?)'\s*[,}}]'
-    match2 = re.search(pattern2, text, re.DOTALL)
-    if match2:
-        return match2.group(1).strip()
     return None
 
 def commit_post(data, img_path=None):
@@ -189,9 +184,3 @@ if __name__ == "__main__":
     notify_indexing(slug)
     post_to_pinterest(slug, article, None)
     print("Готово!")
-
-
-
-
-    
-        
