@@ -60,7 +60,7 @@ def generate_article(topic):
 В "content_markdown" используй Markdown с подзаголовками ##, списками, абзацами. Без дополнительных пояснений."""
     
     response = client.chat.completions.create(
-        model="llama-3.1-70b-versatile",  # или "mixtral-8x7b-32768" для разнообразия
+        model="llama-3.3-70b-versatile",   # ← актуальная рабочая модель
         messages=[{"role": "user", "content": prompt}],
         temperature=0.7,
         max_tokens=2048,
@@ -73,21 +73,7 @@ def generate_article(topic):
         raise ValueError(f"Не удалось извлечь JSON из ответа: {raw[:200]}")
     return data
 
-def create_image(topic):
-    prompt = f"Кофе арт, реалистичное фото, {topic}, уютная атмосфера, капли кофе, светлый фон, вертикальная композиция"
-    url = f"https://image.pollinations.ai/prompt/{requests.utils.quote(prompt)}?width=1000&height=1500&n=1"
-    response = requests.get(url)
-    if response.status_code == 200:
-        img_dir = "assets/images"
-        os.makedirs(img_dir, exist_ok=True)
-        img_name = f"{datetime.now().strftime('%Y%m%d-%H%M')}.jpg"
-        img_path = os.path.join(img_dir, img_name)
-        with open(img_path, "wb") as f:
-            f.write(response.content)
-        return f"/{img_path}"
-    return None
-
-def commit_post(data, img_path):
+def commit_post(data, img_path=None):
     slug = re.sub(r'[^a-zA-Zа-яА-Я0-9]+', '-', data['title'].lower()).strip('-')
     date_str = datetime.now().strftime("%Y-%m-%d")
     filename = f"_posts/{date_str}-{slug}.md"
@@ -131,12 +117,14 @@ def post_to_pinterest(slug, data, img_path):
         }
         print("Пин отправлен (закомментировано).")
 
+# --- Основной рабочий процесс ---
 if __name__ == "__main__":
     topic = get_next_topic()
     print(f"Генерируем тему: {topic}")
     article = generate_article(topic)
-    img_path = create_image(topic)
-    slug = commit_post(article, img_path)
+    # Картинку временно отключаем, чтобы избежать ошибок
+    # img_path = create_image(topic)
+    slug = commit_post(article, None)   # None вместо картинки
     notify_indexing(slug)
-    post_to_pinterest(slug, article, img_path)
+    post_to_pinterest(slug, article, None)
     print("Готово!")
