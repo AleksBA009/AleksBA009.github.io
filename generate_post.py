@@ -6,7 +6,6 @@ from datetime import datetime
 import json
 import re
 
-# --- Конфигурация ---
 GROQ_KEY = os.environ['GROQ_API_KEY']
 GH_TOKEN = os.environ['GH_TOKEN']
 REPO_NAME = "AleksBA009.github.io"
@@ -15,7 +14,6 @@ PINTEREST_TOKEN = os.environ.get('PINTEREST_TOKEN', None)
 
 client = Groq(api_key=GROQ_KEY)
 
-# Партнёрские ссылки (замените на свои)
 AFFILIATE_LINKS = {
     "курс бариста онлайн": "https://getsale.ru/ваша_ссылка",
     "лучшая бюджетная кофемашина": "https://ad.admitad.com/g/ваша_ссылка",
@@ -45,56 +43,51 @@ def generate_article(topic):
         aff_text = "свежих кофейных зерен"
         aff_url = AFFILIATE_LINKS["свежие кофейные зерна"]
 
-    prompt = f"""Ты — профессиональный кофейный эксперт и автор глубоких статей для издания вроде «Вокруг кофе» или «Кофейный журнал». 
-Тема статьи: «{topic}».
+    prompt = f"""Ты — редактор кофейного журнала с 20-летним стажем. Напиши экспертную статью на тему «{topic}». 
+Статья должна быть на русском языке, МИНИМУМ 1200 слов (я проверю, меньше — не принимаю).
 
-Напиши развёрнутую, полезную статью на русском языке длиной не менее 1200 слов. 
-Твой текст должен читаться как материал настоящего знатока, а не поверхностная компиляция из интернета.
+СТРОГИЕ ПРАВИЛА:
+1. Никаких общих фраз вроде «кофе — это искусство», «выбор сложен», «надеемся, что помогли». Сразу к делу.
+2. Каждый подзаголовок H2 должен содержать от 100 до 200 слов с конкретной, измеримой информацией.
+3. ОБЯЗАТЕЛЬНО используй:
+   - Реальные названия моделей, брендов, сортов (DeLonghi Magnifica S, Philips 2200, Ethiopia Yirgacheffe).
+   - Цифры: давление в барах, мощность в Вт, объём в мл, цена в рублях, время в секундах.
+   - Сравнения в формате «модель А vs модель Б» с таблицей или списком.
+   - Типичные ошибки новичков и чёткие инструкции, как их избежать.
+   - Хотя бы один исторический или технологический факт (например, «первый патент на эспрессо-машину был выдан в 1884 году Анджело Мориондо»).
+4. FAQ-блок должен содержать 3-4 вопроса с развёрнутыми ответами (не менее 3 предложений каждый).
 
-Стиль:
-- Умный, но не заумный; доверительный, как разговор с опытным бариста.
-- Избегай общих фраз («кофе — это прекрасный напиток»). Сразу к делу.
-- Используй конкретные цифры, факты, сравнения (например, «давление в 9 бар против 15 бар», «зёрна 100% арабика из Эфиопии Иргачеффе»).
-- Расскажи о типичных ошибках, которые совершают новички, и как их избежать.
-- Включи небольшой исторический или технологический экскурс, если это уместно.
+СТРУКТУРА:
+- Введение: начни с парадокса, малоизвестного факта или сильного утверждения, которое зацепит читателя (3-5 предложений).
+- 5-7 подзаголовков H2, раскрывающих тему.
+- Блок «Часто задаваемые вопросы» (H2).
+- Заключение с главным выводом и практической рекомендацией.
 
-Структура статьи (обязательно используй заголовки H2):
-1. Введение, которое сразу захватывает внимание — начни с проблемы или любопытного факта.
-2. Основная часть из 5-7 подзаголовков, раскрывающих тему с разных сторон.
-3. Блок FAQ: 3-4 вопроса и развёрнутых ответа по теме.
-4. Заключение с главным выводом и рекомендацией.
+Дважды в тексте вставь партнёрскую ссылку: <a href="{aff_url}" target="_blank">{aff_text}</a> — органично, там, где это действительно нужно.
+Добавь ОДНУ внутреннюю ссылку на другую статью сайта: [{SITE_URL}/...]({SITE_URL}/...) — с логичным URL, например /kak-vybrat-zerna-espresso.
 
-В тексте дважды естественно вставь партнёрскую ссылку с анкором «{aff_text}»: <a href="{aff_url}" target="_blank">{aff_text}</a>.
-Также добавь одну внутреннюю ссылку на другую статью сайта {SITE_URL} (придумай логичный URL, например /kak-vybrat-zerna-espresso/).
+ФОРМАТ ОТВЕТА (строго JSON):
+{{"title": "...", "excerpt": "...", "content_markdown": "...", "tags": "кофе, ..."}}
 
-Ответ пришли в формате JSON с полями:
-- "title": заголовок статьи,
-- "excerpt": краткое описание (1-2 предложения),
-- "content_markdown": полный текст статьи в Markdown,
-- "tags": строка с тегами через запятую.
-
-Важно: JSON должен быть валидным, без разрывов строк внутри строковых значений. Используй \\n для переносов строк."""
+В "content_markdown" — полный Markdown статьи. Заголовки H2 обозначай ## .
+Статья должна быть НЕ МЕНЕЕ 1200 СЛОВ."""
 
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.85,
-        max_tokens=3072,
+        max_tokens=4096,  # увеличен для длинных статей
     )
     raw = response.choices[0].message.content
     return parse_article_response(raw)
 
 def parse_article_response(raw):
-    """Извлекает поля статьи из текстового ответа."""
-    # Попытка 1: прямой парсинг JSON
     try:
         data = json.loads(raw)
         if all(k in data for k in ("title", "excerpt", "content_markdown")):
             return data
     except:
         pass
-
-    # Попытка 2: ищем JSON внутри markdown-блока
     json_match = re.search(r'```json\s*(.*?)\s*```', raw, re.DOTALL)
     if json_match:
         try:
@@ -103,31 +96,20 @@ def parse_article_response(raw):
                 return data
         except:
             pass
-
-    # Попытка 3: извлечение полей регулярками
     title = extract_field(raw, "title")
     excerpt = extract_field(raw, "excerpt")
     content = extract_field(raw, "content_markdown")
     tags = extract_field(raw, "tags")
-
     if title and excerpt and content:
-        return {
-            "title": title,
-            "excerpt": excerpt,
-            "content_markdown": content,
-            "tags": tags or "кофе"
-        }
+        return {"title": title, "excerpt": excerpt, "content_markdown": content, "tags": tags or "кофе"}
     else:
-        raise ValueError(f"Не удалось извлечь статью из ответа:\n{raw[:500]}")
+        raise ValueError(f"Не удалось извлечь статью:\n{raw[:500]}")
 
 def extract_field(text, field_name):
-    """Ищет значение поля в JSON-подобной строке, даже если значение содержит неэкранированные переносы строк."""
-    # Ищем "field_name": "..." 
     pattern = r'"' + re.escape(field_name) + r'"\s*:\s*"(.*?)"\s*[,}]'
     match = re.search(pattern, text, re.DOTALL)
     if match:
         value = match.group(1)
-        # Заменяем escape-последовательности
         value = value.replace('\\"', '"').replace('\\n', '\n')
         return value.strip()
     return None
@@ -136,7 +118,6 @@ def commit_post(data, img_path=None):
     slug = re.sub(r'[^a-zA-Zа-яА-Я0-9]+', '-', data['title'].lower()).strip('-')
     date_str = datetime.now().strftime("%Y-%m-%d")
     filename = f"_posts/{date_str}-{slug}.md"
-
     frontmatter = f"""---
 layout: post
 title: "{data['title']}"
@@ -148,7 +129,6 @@ tags: {data.get('tags', 'кофе')}
     content = frontmatter + "\n" + data['content_markdown']
     if img_path:
         content += f"\n\n![{data['title']}]({img_path})"
-
     g = Github(GH_TOKEN)
     repo = g.get_repo(f"AleksBA009/{REPO_NAME}")
     try:
@@ -160,20 +140,10 @@ tags: {data.get('tags', 'кофе')}
     return slug
 
 def notify_indexing(slug):
-    url = f"{SITE_URL}/{slug}/"
-    print(f"URL для индексации: {url}")
+    print(f"URL для индексации: {SITE_URL}/{slug}/")
 
 def post_to_pinterest(slug, data, img_path):
     if PINTEREST_TOKEN and img_path:
-        board_id = "ваш_board_id"
-        headers = {"Authorization": f"Bearer {PINTEREST_TOKEN}"}
-        pin_data = {
-            "board_id": board_id,
-            "title": data['title'],
-            "description": data['excerpt'],
-            "link": f"{SITE_URL}/{slug}/",
-            "media_source": {"source_type": "image_url", "url": f"{SITE_URL}/{img_path}"}
-        }
         print("Пин отправлен (закомментировано).")
 
 if __name__ == "__main__":
