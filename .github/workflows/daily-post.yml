@@ -34,18 +34,20 @@ jobs:
         run: python generate_post.py
 
       - name: Commit and push any local changes
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          # Сохраняем локальные изменения во временное хранилище
+          # Сохраняем локальные правки
           git stash
-          # Подтягиваем последнюю версию из удалённого репозитория
+          # Получаем свежую версию репозитория
           git pull --rebase origin main
-          # Возвращаем наши изменения обратно
+          # Возвращаем наши изменения
           git stash pop
-          # Добавляем всё (topics.txt, возможно картинки в будущем)
+          # Добавляем всё
           git add .
-          # Коммитим (если есть что коммитить)
+          # Коммитим (если есть что)
           git commit -m "Авто-обновление" || echo "Нет изменений для коммита"
-          # Отправляем на GitHub
-          git push origin main
+          # Пуш с явным токеном
+          git push https://x-access-token:${GH_TOKEN}@github.com/AleksBA009/AleksBA009.github.io.git main
