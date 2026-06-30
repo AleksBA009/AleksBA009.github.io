@@ -24,11 +24,11 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install google-generativeai PyGithub requests
+        run: pip install groq PyGithub requests
 
       - name: Generate and publish post
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           PINTEREST_TOKEN: ${{ secrets.PINTEREST_TOKEN }}
         run: python generate_post.py
