@@ -6,17 +6,15 @@ from datetime import datetime
 import json
 import re
 
-# --- Конфигурация (из Secrets) ---
+# --- Конфигурация ---
 GROQ_KEY = os.environ['GROQ_API_KEY']
 GH_TOKEN = os.environ['GH_TOKEN']
 REPO_NAME = "AleksBA009.github.io"
 SITE_URL = "https://aleksba009.github.io"
 PINTEREST_TOKEN = os.environ.get('PINTEREST_TOKEN', None)
 
-# Настройка Groq
 client = Groq(api_key=GROQ_KEY)
 
-# Партнёрские ссылки (замените на свои)
 AFFILIATE_LINKS = {
     "курс бариста онлайн": "https://digistore24.com/example-barista-course",
     "лучшая бюджетная кофемашина": "https://admitad.com/example-coffeemachine",
@@ -46,6 +44,7 @@ def generate_article(topic):
         aff_text = "свежих кофейных зерен"
         aff_url = AFFILIATE_LINKS["свежие кофейные зерна"]
 
+    # Улучшенный промпт: требование экранировать спецсимволы в JSON
     prompt = f"""Ты — эксперт по кофе и SEO-копирайтер. Напиши статью на тему "{topic}" длиной 1000-1500 слов на русском языке.
 Структура: 
 - Привлекающий внимание заголовок (H1).
@@ -56,28 +55,51 @@ def generate_article(topic):
 
 В текст естественно вставь 2 раза ссылку: <a href="{aff_url}" target="_blank">{aff_text}</a>. 
 Также добавь одну внутреннюю ссылку на ранее опубликованную статью с сайта {SITE_URL} (придумай правдоподобный URL, например /kak-vybrat-zerna-espresso/).
-Ответ верни ТОЛЬКО в формате JSON: {{"title": "...", "excerpt": "...", "content_markdown": "...", "tags": "кофе, ..."}}. 
+
+Ответ верни ТОЛЬКО в формате JSON. ВАЖНО: внутри JSON экранируй все двойные кавычки как \\\", а все переводы строк внутри текстовых значений как \\n. Сам JSON должен быть валидным.
+Формат JSON:
+{{"title": "...", "excerpt": "...", "content_markdown": "...", "tags": "кофе, ..."}}
 В "content_markdown" используй Markdown с подзаголовками ##, списками, абзацами. Без дополнительных пояснений."""
-    
+
     response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",   # ← актуальная рабочая модель
+        model="llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.7,
         max_tokens=2048,
     )
     raw = response.choices[0].message.content
+
+    # Попытка 1: ищем JSON в ответе (может быть в ```json ... ```)
     json_match = re.search(r'{.*}', raw, re.DOTALL)
     if json_match:
-        data = json.loads(json_match.group())
+        raw_json = json_match.group()
     else:
-        raise ValueError(f"Не удалось извлечь JSON из ответа: {raw[:200]}")
+        raw_json = raw
+
+    # Удаляем управляющие символы (кроме разрешённых) и пытаемся парсить
+    def clean_json(s):
+        # Удаляем все непечатные управляющие символы, которые не являются \n, \r, \t (хотя \n внутри строк должен быть экранирован)
+        # Оставляем только разрешённые символы
+        return re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', s)
+
+    try:
+        data = json.loads(raw_json)
+    except json.JSONDecodeError:
+        # Попытка 2: очистить и повторить
+        try:
+            cleaned = clean_json(raw_json)
+            data = json.loads(cleaned)
+        except json.JSONDecodeError as e:
+            # Попытка 3: иногда Groq возвращает не экранированные переводы строк, заменим их на \n
+            # Но это сложно, выведем ошибку с сырым ответом для анализа
+            raise ValueError(f"Не удалось распарсить JSON после очистки. Ошибка: {e}. Сырой ответ:\n{raw[:500]}")
     return data
 
 def commit_post(data, img_path=None):
     slug = re.sub(r'[^a-zA-Zа-яА-Я0-9]+', '-', data['title'].lower()).strip('-')
     date_str = datetime.now().strftime("%Y-%m-%d")
     filename = f"_posts/{date_str}-{slug}.md"
-    
+
     frontmatter = f"""---
 layout: post
 title: "{data['title']}"
@@ -89,7 +111,7 @@ tags: {data.get('tags', 'кофе')}
     content = frontmatter + "\n" + data['content_markdown']
     if img_path:
         content += f"\n\n![{data['title']}]({img_path})"
-    
+
     g = Github(GH_TOKEN)
     repo = g.get_repo(f"AleksBA009/{REPO_NAME}")
     try:
@@ -117,14 +139,14 @@ def post_to_pinterest(slug, data, img_path):
         }
         print("Пин отправлен (закомментировано).")
 
-# --- Основной рабочий процесс ---
+# --- Основной процесс ---
 if __name__ == "__main__":
     topic = get_next_topic()
     print(f"Генерируем тему: {topic}")
     article = generate_article(topic)
-    # Картинку временно отключаем, чтобы избежать ошибок
+    # Картинки временно отключены
     # img_path = create_image(topic)
-    slug = commit_post(article, None)   # None вместо картинки
+    slug = commit_post(article, None)
     notify_indexing(slug)
     post_to_pinterest(slug, article, None)
     print("Готово!")
